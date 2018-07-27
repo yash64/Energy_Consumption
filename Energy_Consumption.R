@@ -14,6 +14,8 @@ library(caret)
 library(Deducer)
 library(lubridate)
 library(tidyr)
+library(corrplot)
+library(dummies)
 
 #importing dataset
 dat <- read.csv("energydata_complete.csv", stringsAsFactors = FALSE)
@@ -35,11 +37,15 @@ dat$date <- strptime(dat$date, format = "%Y-%m-%d %H:%M:%S")
 dat$date <- as.POSIXct(dat$date, format = "%Y-%m-%d %H:%M:%S")
 
 dat$hour <- format(dat$date, "%H")
-#dat$month <- as.factor(months(dat$date))
+dat$day <- wday(dat$date, label = TRUE)
 
 #hourly consumption month wise
 hour_month_usage <- dat %>% group_by(hour, month) %>% dplyr::summarise(usage = sum(Appliances),
                                                                        avg_usage = mean(Appliances))
+
+ggplot(dat, aes(x=day, y=Appliances))+ stat_summary(fun.y = 'mean', geom = 'bar')
+ggplot(dat, aes(x=month, y=Appliances))+ stat_summary(fun.y = 'mean', geom = 'bar')
+
 
 ggplot(hour_month_usage, aes(x = month, y = hour, fill = avg_usage)) + geom_tile() +
   scale_x_discrete(limits = c('January', 'February', 'March','April','May')) + 
@@ -47,7 +53,7 @@ ggplot(hour_month_usage, aes(x = month, y = hour, fill = avg_usage)) + geom_tile
   theme(plot.title=element_text(hjust=0.5))# + scale_fill_gradient(low="yellow", high="red")
   
 #hourly energy consumption on day of the week
-dat$day <- wday(dat$date, label = TRUE)
+
 
 hour_day_usage <- dat %>% group_by(hour, day) %>% dplyr::summarise(usage = sum(Appliances),
                                                                        avg_usage = mean(Appliances))
@@ -178,5 +184,34 @@ ggplot(wind_hour,aes(x=hour,y=speed_avg,group=month,colour=factor(month, labels 
   geom_point() + geom_line()+scale_colour_discrete(name = "Month") +
   labs(title='Wind speed m/s',x='Hour',y='Average Wind Speed')+
   theme(plot.title = element_text(hjust=0.5))
-  
+
+#creating model for energy prediction  
+dat$month <- as.factor(dat$month)
+
+#create train and test datasets(70:30)
+set.seed(1)
+
+#copy of original dataframe
+dat_model <- dat
+
+dat_model$rv1 <- NULL
+dat_model$rv2 <- NULL
+dat_model$date <- NULL
+
+index <- sample(nrow(dat_model), size = nrow(dat_model)*0.7)
+train <- dat_model[index,]
+test <- dat_model[-(index),]
+
+corrplot(cor(dat_model[,1:26]), method = 'number', type = 'upper',order = 'hclust',number.cex=0.65, tl.cex = 1)
+
+#include dummy variables
+train_dat <- dummy.data.frame(train, names=c('month','day'))
+
+rf_model <- randomForest(data = train, Appliances ~.-month-day, ntree = 1000, nodesize=10)
+print(rf_model)
+varImpPlot(rf_model)
+
+lr_model <- lm(data = train, Appliances ~.-month-day)
+summary(lr_model)
+
 
