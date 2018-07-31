@@ -249,3 +249,7 @@ summary(lr_model)
 svm_model <- svm(Appliances ~. -month-day, data = train)
 sqrt(mean((svm_model$residuals)^2))
 train$Appliances-svm_model$
+
+
+dat$minute <- minute(dat$date)
+dat$wday <- ifelse(dat$day == 'Sun' | dat$day == 'Sat','wend','wday')
