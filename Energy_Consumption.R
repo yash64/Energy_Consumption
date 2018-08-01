@@ -214,7 +214,9 @@ ggsave("hourly wind speed.jpg",plot = g15, width = 8, height = 5)
 
 
 #creating model for energy prediction  
-dat$month <- as.factor(dat$month)
+dat$minute <- minute(dat$date)
+dat$wday <- ifelse(dat$day == 'Sun' | dat$day == 'Sat','wend','wday')
+dat$wday <- as.factor(dat$wday)
 
 #create train and test datasets(70:30)
 set.seed(1)
@@ -238,18 +240,33 @@ test <- dat_model[-(index),]
 #include dummy variables
 train_dat <- dummy.data.frame(train, names=c('month','day'))
 
-rf_model <- randomForest(data = train, Appliances ~.-month-day, ntree = 1000, nodesize=10)
+#only with temp and humidity columns
+rf_model <- randomForest(Appliances ~., data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)),
+                         ntree = 1000, nodesize=10)
 print(rf_model)
 varImpPlot(rf_model)
 
-lr_model <- lm(data = train, Appliances ~.-month-day)
+#only with temp and humidity columns including minutes and wday
+rf_model1 <- randomForest(Appliances ~., data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)),
+                         ntree = 1000, nodesize=10)
+print(rf_model1)
+varImpPlot(rf_model1)
+
+pred_appliance <- predict(rf_model1, newdata = subset(test, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)))
+mean((test$Appliances-pred_appliance)^2)
+
+
+#only with temp and humidity columns including minutes and wday
+rf_model2 <- randomForest(Appliances ~.-month-day, data = train[,-(4:21)],
+                          ntree = 1000, nodesize=10)
+print(rf_model2)
+varImpPlot(rf_model2)
+
+#linear regression
+lr_model <- lm(data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)), Appliances ~.)
 summary(lr_model)
 
+
 ##SVM model
-svm_model <- svm(Appliances ~. -month-day, data = train)
+svm_model <- svm(Appliances ~., data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)))
 sqrt(mean((svm_model$residuals)^2))
-train$Appliances-svm_model$
-
-
-dat$minute <- minute(dat$date)
-dat$wday <- ifelse(dat$day == 'Sun' | dat$day == 'Sat','wend','wday')
