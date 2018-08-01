@@ -248,13 +248,16 @@ varImpPlot(rf_model)
 
 #only with temp and humidity columns including minutes and wday
 rf_model1 <- randomForest(Appliances ~., data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)),
-                         ntree = 1000, nodesize=10)
+                          ntree = 1000, nodesize=10)
 print(rf_model1)
+#RMSE 69.36
+#R2 54.84
 varImpPlot(rf_model1)
 
 pred_appliance <- predict(rf_model1, newdata = subset(test, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)))
 mean((test$Appliances-pred_appliance)^2)
 
+plot(train$Appliances, (train$Appliances-rf_model1$predicted), xlab = 'Appliances', ylab='Residuals',main = 'Residual plot')
 
 #only with temp and humidity columns including minutes and wday
 rf_model2 <- randomForest(Appliances ~.-month-day, data = train[,-(4:21)],
@@ -265,8 +268,66 @@ varImpPlot(rf_model2)
 #linear regression
 lr_model <- lm(data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)), Appliances ~.)
 summary(lr_model)
-
+#RMSE 91.19
+#R2 22.22
 
 ##SVM model
 svm_model <- svm(Appliances ~., data = subset(train, select=-c(lights,Press_mm_hg,Windspeed,Visibility,Tdewpoint,month,day)))
 sqrt(mean((svm_model$residuals)^2))
+
+#plotting rmse values
+rmse <- data.frame(model = c('lr','svm','rf'), rmse = c(91.19,71.45,69.36))
+ggplot(data=rmse, aes(model,rmse))+geom_point()+
+  scale_x_discrete(limits=c('lr','svm','rf'))+
+  labs(title = 'RMSE Values')+theme(plot.title = element_text(hjust = 0.5))
+
+
+
+
+##### Forescasting #####
+
+library(forecast)
+library(tseries)
+
+dat1 <- dat[,c('date','Appliances')]
+
+##Convert the dataframe as timeseries object with starting and ending points
+dat_ts <- ts(dat1[,2], frequency = 60)
+plot(dat_ts)
+
+ggplot() +
+  geom_line(data = dat1, aes(x = date, y = dat_ts))+ylab('Appliances Energy')
+
+##moving average
+dat1$ma9 <- ma(dat_ts, order = 9)
+dat1$ma15 <- ma(dat_ts, order = 15)
+dat1$ma30 <- ma(dat_ts, order = 30)
+
+ggplot() + 
+  geom_line(data = dat1, aes(x=date, y=dat_ts, colour = 'appliances'))+
+  geom_line(data = dat1, aes(x=date, y=ma15, colour ='moving average 15'))+
+  geom_line(data = dat1, aes(x=date, y=ma30, colour ='moving average 30'))
+
+##Decomposing
+decomp <- stl(dat_ts, s.window = 'periodic')
+plot(decomp)
+#deseason <- seasadj(decomp)
+#plot(deseason)
+
+adf.test(dat_ts, alternative = "stationary")
+
+### Forecasting with different values of alpha, beta and gamma 
+
+sales_dev <- window(sal, start=c(2011,1), end=c(2015,12))
+sales_HO <- window(sal, start=c(2016,1), end=c(2017,5))
+plot(sales_dev)
+
+sales_dev_fit <- HoltWinters(sales_dev, alpha=0.2, beta=0.05, gamma=0.4, seasonal = "mult")
+sales_mod <- forecast(sales_dev_fit, 24)
+plot(sales_mod)
+
+HO_pred <- cbind(sales_HO,sales_mod$mean)
+ts.plot(HO_pred, col=c("blue", "red"))
+MAPE <- mean(abs(HO_pred[,1]- HO_pred[,2]) / HO_pred[,1])
+MAPE
+
